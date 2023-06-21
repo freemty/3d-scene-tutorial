@@ -1,6 +1,8 @@
 import numpy as np
 import open3d as o3d
+import torch
 from math import cos, sin
+from tools.kitti360Scripts.helpers.labels import  name2label
 
 pi = 3.1415
 
@@ -74,10 +76,64 @@ def create_c2w(cam_R_world, cam_T_world, cam_type = 'opencv'):
 
     return c2w
 
-import open3d as o3d
-import json
-import numpy as np
 
+# # Ray helpers
+# Camera Coordinate System
+# 这里我们约定z方向长度为1的方向向量为ray_direction, 归一化的方向向量成称之为viewdir(view = ray_direction / norm( ray_direction))
+#? Difference between coordinate systems(opengl vs opencv) -> https://stackoverflow.com/questions/44375149/opencv-to-opengl-coordinate-system-transform
+# The camera coordinates of OpenCV goes X right, Y down, Z forward. While the camera coordinates of OpenGL goes X right, Y up, Z inward.
+# Ray helpers
+def get_rays_torch(H, W, K, c2w, cam_type = 'opengl'):
+    '''
+    coordinata type: opengl, opencv
+    '''
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
+    i = i.t()
+    j = j.t()
+    if cam_type == 'opengl':
+        dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
+    elif cam_type == 'opencv':
+        dirs = torch.stack([(i-K[0][2])/K[0][0], (j-K[1][2])/K[1][1], torch.ones_like(i)], -1)
+    # Rotate ray directions from camera frame to the world frame
+    rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+    # Translate camera frame's origin to the world frame. It is the origin of all rays.
+    rays_o = c2w[:3,-1].expand(rays_d.shape)
+    return rays_o, rays_d
+
+def get_rays_np(H, W, K, c2w , cam_type = 'opengl'):
+    '''
+    coordinata type: opengl, opencv
+    '''
+    i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
+    if cam_type == 'opengl':
+        dirs = np.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -np.ones_like(i)], -1)
+    elif cam_type == 'opencv':
+        dirs = np.stack([(i-K[0][2])/K[0][0], (j-K[1][2])/K[1][1], np.ones_like(i)], -1)
+    # Rotate ray directions from camera frame to the world frame
+    rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+    # Translate camera frame's origin to the world frame. It is the origin of all rays.
+    rays_o = np.broadcast_to(c2w[:3,-1], np.shape(rays_d))
+    return rays_o, rays_d
+
+
+def ndc_rays(H, W, focal, near, rays_o, rays_d):
+    # Shift ray origins to near plane
+    t = -(near + rays_o[...,2]) / rays_d[...,2]
+    rays_o = rays_o + t[...,None] * rays_d
+    
+    # Projection
+    o0 = -1./(W/(2.*focal)) * rays_o[...,0] / rays_o[...,2]
+    o1 = -1./(H/(2.*focal)) * rays_o[...,1] / rays_o[...,2]
+    o2 = 1. + 2. * near / rays_o[...,2]
+
+    d0 = -1./(W/(2.*focal)) * (rays_d[...,0]/rays_d[...,2] - rays_o[...,0]/rays_o[...,2])
+    d1 = -1./(H/(2.*focal)) * (rays_d[...,1]/rays_d[...,2] - rays_o[...,1]/rays_o[...,2])
+    d2 = -2. * near / rays_o[...,2]
+    
+    rays_o = torch.stack([o0,o1,o2], -1)
+    rays_d = torch.stack([d0,d1,d2], -1)
+    
+    return rays_o, rays_d
 
 # o3d utils
 def vis_world_bounds_o3d(bounds, add_origin = False, vis = False):
@@ -107,6 +163,39 @@ def vis_world_bounds_o3d(bounds, add_origin = False, vis = False):
         o3d.visualization.draw_geometries(mark_group)
     return mark_group
 
+
+def vis_voxel_world_o3d(vertices_seamntic,vertices_grid_pts, stuff_name_list = ['ground','wall', 'object'], vis = False):
+    pt_group = []
+
+    vertices_seamntic,vertices_grid_pts = vertices_seamntic.reshape(-1), vertices_grid_pts.reshape(-1,3)
+    for k in  stuff_name_list:
+        valid_idx = (vertices_seamntic ==  name2label[k].id)
+        pt= o3d.geometry.PointCloud()
+        if valid_idx.shape[0] != 0:
+            pt.points = o3d.utility.Vector3dVector(vertices_grid_pts[valid_idx == 1])
+            pt_color= np.array( name2label[k].color)/255.0
+            pt.paint_uniform_color(pt_color)
+            pt_group.append(pt)
+    if vis:
+        pt_group += [o3d.geometry.TriangleMesh.create_coordinate_frame(size=5)]
+        o3d.visualization.draw_geometries(pt_group)
+    return pt_group
+
+# loc_voxel
+def vis_layout_o3d(layout, vis = False):
+    mesh_group = []
+    for _, obj in layout.items():
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(obj['vertices'])
+        mesh.triangles = o3d.utility.Vector3iVector(obj['faces'])
+        mesh.paint_uniform_color(obj['color'])
+        mesh.compute_vertex_normals()
+        mesh_group += [mesh]
+
+    if vis:
+        mesh_group += [o3d.geometry.TriangleMesh.create_coordinate_frame(size=3)]
+        o3d.visualization.draw_geometries(mesh_group)
+    return mesh_group
 # def vis_camera():
 #     get_camera_frustum(img_size=, K, W2C, )
 
