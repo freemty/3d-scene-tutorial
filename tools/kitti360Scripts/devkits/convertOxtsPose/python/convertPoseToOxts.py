@@ -1,5 +1,5 @@
 import numpy as np
-from utils import latToScale, latlonToMercator, mercatorToLatlon
+from utils.base_utils import latToScale, latlonToMercator, mercatorToLatlon
 
 def convertPoseToOxts(pose):
   '''converts a list of metric poses into oxts measurements,

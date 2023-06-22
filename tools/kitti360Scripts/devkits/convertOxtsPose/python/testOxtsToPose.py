@@ -1,7 +1,7 @@
 # Test script for loading Oxts data and convert to Mercator coordinate
 import os
 from data import loadOxtsData
-from utils import postprocessPoses
+from utils.base_utils import postprocessPoses
 from convertOxtsToPose import convertOxtsToPose
 
 if __name__=="__main__":
