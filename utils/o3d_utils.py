@@ -38,11 +38,12 @@ def vis_voxel_world_o3d(voxel_world, vis = False, voxelization = False):
     vertices_seamntic,vertices_grid_pts = voxel_world['semantic_grid'].reshape(-1), voxel_world['loc_grid'].reshape(-1,3)
     semantic_list = voxel_world['semantic_name']
     semantic_color = voxel_world['semantic_color']
+    semantic_id =  voxel_world['semantic_id']
     voxel_size = voxel_world['voxel_size'].min()
 
 
     for k in semantic_list:
-        valid_idx = (vertices_seamntic ==  name2label[k].id)
+        valid_idx = (vertices_seamntic ==  semantic_id[k])
         pt= o3d.geometry.PointCloud()
         if valid_idx.shape[0] != 0:
             pt.points = o3d.utility.Vector3dVector(vertices_grid_pts[valid_idx == 1])

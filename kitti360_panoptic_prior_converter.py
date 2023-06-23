@@ -121,9 +121,9 @@ def create_c2w(cam_R_world, cam_T_world, cam_type = 'opencv'):
 
 
 if __name__ == '__main__':
-    scene_size = np.array((64., 64, 16))
+    scene_size = np.array((8., 8, 4))
     vox_size = np.array((0.25, 0.25,0.25))
-    vox_origin = np.array([0, -32, -2])
+    vox_origin = np.array([0, -8, -2])
     seq = 0
     sequence = ''
 
