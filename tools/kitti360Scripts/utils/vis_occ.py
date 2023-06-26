@@ -5,7 +5,7 @@ import torch
 import pickle
 import math
 from typing import Tuple, List, Dict, Iterable
-import json
+
 NOT_OBSERVED = -1
 FREE = 0
 OCCUPIED = 1
@@ -109,7 +109,7 @@ def my_compute_box_3d(center, size, heading_angle):
     corners_3d[..., 2] += center[:, 2:3]
     return corners_3d
 
-def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, bbox3d=None, voxelize=False, bbox_corners=None, linesets=None, vis=None, offset=[0,0,0]):
+def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, bbox3d=None, voxelize=False, bbox_corners=None, linesets=None, vis=None, offset=[0,0,0]) -> None:
     """
     :param points:
     :param colors: false 不显示点云颜色
@@ -187,8 +187,7 @@ def generate_the_ego_car():
     return ego_point_xyz
     
 if __name__ == '__main__':
-
-    
+    data_dir = "/home/user/tmp/voxel/000/"
     
     NOT_OBSERVED = -1
     FREE = 0
@@ -208,33 +207,17 @@ if __name__ == '__main__':
     SPTIAL_SHAPE=[1600, 1600, 64]
     TGT_VOXEL_SIZE=[0.4, 0.4, 0.4]
     TGT_POINT_CLOUD_RANGE=[-40, -40, -1, 40, 40, 5.4]
-    VIS = True
+    VIS = False
     FILL_ROAD = False
 
     voxel_size = VOXEL_SIZE
     point_cloud_range = POINT_CLOUD_RANGE
-
-    data_root = "data/nuscene"
-    maeta_data_path = os.path.join(data_root,'annotations.json')
-    with open(maeta_data_path, 'rb+') as fp:
-        metadata = json.load(fp)
-    
-    train_split = metadata['train_split']
-    scenes_infos = metadata['scene_infos']
-
-    for scene_id in train_split:
-        for frame in scenes_infos[scene_id].values():
-            file_path = frame['gt_path']
-            file = os.path.join(data_root, file_path)
-            continue
-
-    # for idx in range(100):
-    #     file = os.path.join(data_dir, f'{str(idx).zfill(3)}.npz')
+    for idx in range(100):
+        file = os.path.join(data_dir, f'{str(idx).zfill(3)}.npz')
         data = np.load(file)
-        voxel_label = data['semantics']
-        # voxel_label = data['voxel_label']
-        lidar_mask = data['mask_lidar']
-        camera_mask = data['mask_camera']
+        voxel_label = data['voxel_label']
+        lidar_mask = data['origin_voxel_state']
+        camera_mask = data['final_voxel_state']
         infov = data['infov']
         ego2global = data['ego2global']
 
@@ -257,20 +240,20 @@ if __name__ == '__main__':
         vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=None,
                             offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 0, 0, 0])
 
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, lidar_mask == BINARY_OBSERVED)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 1, 0, 0])
+        voxel_label_vis = voxel_label
+        voxel_show = np.logical_and(voxel_label != FREE_LABEL, lidar_mask == BINARY_OBSERVED)
+        vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
+                            offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 1, 0, 0])
 
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, camera_mask == BINARY_OBSERVED)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 2, 0, 0])
+        voxel_label_vis = voxel_label
+        voxel_show = np.logical_and(voxel_label != FREE_LABEL, camera_mask == BINARY_OBSERVED)
+        vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
+                            offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 2, 0, 0])
 
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, infov == True)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 3, 0, 0])
+        voxel_label_vis = voxel_label
+        voxel_show = np.logical_and(voxel_label != FREE_LABEL, infov == True)
+        vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
+                            offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 3, 0, 0])
         
         ego_point = generate_the_ego_car()
         ego_point[:, 0] += point_cloud_range[3]

@@ -2,3 +2,6 @@
 /__pycache__
 .DS_Store
 *.pyc
+/data/waymo/
+/data/nuscene/
+!/data/nuscene/annotations.json

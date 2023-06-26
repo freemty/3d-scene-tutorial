@@ -63,7 +63,6 @@ c2w = create_c2w(cam_R_world=cam_R, cam_T_world=cam_T, cam_type='opencv')
 c2w_gl = create_c2w(cam_R_world=cam_R, cam_T_world=cam_T, cam_type='opencv')
 # For open3d follow opencv camera coordiante
 w2c = np.linalg.inv(c2w)
-# rays = get_rays_np(H=H, W=W, K=K, c2w=c2w, cam_type='opencv')
 
 if __name__ == '__main__':   
     # Congig of semantic kitti scenes(from monoScene)

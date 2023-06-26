@@ -5,7 +5,7 @@ import torch
 import pickle
 import math
 from typing import Tuple, List, Dict, Iterable
-import json
+
 NOT_OBSERVED = -1
 FREE = 0
 OCCUPIED = 1
@@ -187,8 +187,7 @@ def generate_the_ego_car():
     return ego_point_xyz
     
 if __name__ == '__main__':
-
-    
+    data_dir = "data/waymo/voxel/797"
     
     NOT_OBSERVED = -1
     FREE = 0
@@ -213,28 +212,12 @@ if __name__ == '__main__':
 
     voxel_size = VOXEL_SIZE
     point_cloud_range = POINT_CLOUD_RANGE
-
-    data_root = "data/nuscene"
-    maeta_data_path = os.path.join(data_root,'annotations.json')
-    with open(maeta_data_path, 'rb+') as fp:
-        metadata = json.load(fp)
-    
-    train_split = metadata['train_split']
-    scenes_infos = metadata['scene_infos']
-
-    for scene_id in train_split:
-        for frame in scenes_infos[scene_id].values():
-            file_path = frame['gt_path']
-            file = os.path.join(data_root, file_path)
-            continue
-
-    # for idx in range(100):
-    #     file = os.path.join(data_dir, f'{str(idx).zfill(3)}.npz')
+    for idx in range(100):
+        file = os.path.join(data_dir, f'{str(idx).zfill(3)}.npz')
         data = np.load(file)
-        voxel_label = data['semantics']
-        # voxel_label = data['voxel_label']
-        lidar_mask = data['mask_lidar']
-        camera_mask = data['mask_camera']
+        voxel_label = data['voxel_label']
+        lidar_mask = data['origin_voxel_state']
+        camera_mask = data['final_voxel_state']
         infov = data['infov']
         ego2global = data['ego2global']
 
