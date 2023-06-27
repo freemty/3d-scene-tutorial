@@ -73,6 +73,36 @@ def create_c2w(cam_R_world, cam_T_world, cam_type = 'opencv'):
 
 
 
+def CV2GL(cv_mat):
+    '''' 
+    CV (camera look at +Z, up +Y)
+        -Y
+        |
+        |
+        +-----> +X
+       /
+      /
+    +Z
+
+    GL (camera look at -Z, up +Y)
+        +Y
+        |
+        |
+        +-----> +X
+       /
+      /
+    -Z
+    '''
+    cv2gl_mat = np.array(
+        [[1,0,0,0],
+        [0,-1,0,0],
+        [0,0,-1,0],
+        [0,0,0,1]])
+    # using GL basis to describe CV basis
+    gl_mat = cv_mat @ cv2gl_mat
+    # gl_mat[:3,3] = cv_mat[:3,3]
+    return gl_mat
+
 # # Ray helpers
 # Camera Coordinate System
 # 这里我们约定z方向长度为1的方向向量为ray_direction, 归一化的方向向量成称之为viewdir(view = ray_direction / norm( ray_direction))

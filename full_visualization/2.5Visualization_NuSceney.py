@@ -1,36 +1,27 @@
 import os
+import sys
+sys.path.append(os.getcwd())
+
 import open3d as o3d
+import pickle
 import numpy as np
 import torch
-import pickle
 import math
-from typing import Tuple, List, Dict, Iterable
+import matplotlib.pyplot as plt
+from pyquaternion import Quaternion
+# from pathlib import Path
+# from glob import glob
 import json
-NOT_OBSERVED = -1
-FREE = 0
-OCCUPIED = 1
+from utils.o3d_utils import  costum_visualizer_o3d
+from utils.transform_utils import CV2GL
 
-color_map = {
-    0: (0,0,0),
-    1: (255,255,255),
-    2: (255,0,0),
-    3: (0,255,0),
-    4: (0,0,255),
-    5: (255,255,0),
-    6: (0,255,255),
-    7: (255,0,255),
-    8: (192,192,192),
-    9: (128,128,128),
-    10: (128,0,0),
-    11: (128,128,0),
-    12: (0,128,0),
-    13: (128,0,128),
-    14: (0,128,128),
-    15: (0,0,128),
- }
-colormap_to_colors = np.array(
+LINE_SEGMENTS = [
+    [4, 0], [3, 7], [5, 1], [6, 2],  # lines along x-axis
+    [5, 4], [5, 6], [6, 7], [7, 4],  # lines along x-axis
+    [0, 1], [1, 2], [2, 3], [3, 0]]  # lines along y-axis
+colors_map = np.array(
     [
-        [0,   0,   0, 255],  # 0 undefined
+        # [0,   0,   0, 255],  # 0 undefined
         [255, 158, 0, 255],  # 1 car  orange
         [0, 0, 230, 255],    # 2 pedestrian  Blue
         [47, 79, 79, 255],   # 3 sign  Darkslategrey
@@ -46,35 +37,26 @@ colormap_to_colors = np.array(
         [0, 207, 191, 255],  # 13 curb, road, lane_marker, other_ground
         [75, 0, 75, 255], # 14 walkable, sidewalk
         [255, 0, 0, 255], # 15 unobsrvd
-        [128, 128, 128, 255], # 16 for vis
-], dtype=np.float32)
+        # [128, 128, 128, 255], # 16 for vis
+    ])
+color = colors_map[:, :3] / 255
 
-# def colormap_to_colors(colormap: Dict[str, Iterable[int]]) -> np.ndarray:
-#     """
-#     Create an array of RGB values from a colormap. Note that the RGB values are normalized
-#     between 0 and 1, not 0 and 255.
-#     :param colormap: A dictionary containing the mapping from class names to RGB values.
-#     :param name2idx: A dictionary containing the mapping form class names to class index.
-#     :return: An array of colors.
-#     """
-#     colors = []
-#     for i, (k, v) in enumerate(colormap.items()):
-#         # Ensure that the indices from the colormap is same as the class indices.
-#         colors.append(v)
 
-#     colors = np.array(colors) / 255  # Normalize RGB values to be between 0 and 1 for each channel.
 
-#     return colors
-
-def voxel2points(voxel, occ_show, voxelSize):
-    occIdx = torch.where(occ_show)
+def voxel2points(voxel, voxelSize, range=[-40.0, -40.0, -1.0, 40.0, 40.0, 5.4], ignore_labels=[17, 255]):
+    if isinstance(voxel, np.ndarray): voxel = torch.from_numpy(voxel)
+    mask = torch.zeros_like(voxel, dtype=torch.bool)
+    for ignore_label in ignore_labels:
+        mask = torch.logical_or(voxel == ignore_label, mask)
+    mask = torch.logical_not(mask)
+    occIdx = torch.where(mask)
     # points = torch.concatenate((np.expand_dims(occIdx[0], axis=1) * voxelSize[0], \
     #                          np.expand_dims(occIdx[1], axis=1) * voxelSize[1], \
     #                          np.expand_dims(occIdx[2], axis=1) * voxelSize[2]), axis=1)
-    points = torch.cat((occIdx[0][:, None] * voxelSize[0], \
-                        occIdx[1][:, None] * voxelSize[1], \
-                        occIdx[2][:, None] * voxelSize[2]), dim=1)
-    return points, voxel[occIdx], occIdx
+    points = torch.cat((occIdx[0][:, None] * voxelSize[0] + voxelSize[0] / 2 + range[0], \
+                        occIdx[1][:, None] * voxelSize[1] + voxelSize[1] / 2 + range[1], \
+                        occIdx[2][:, None] * voxelSize[2] + voxelSize[2] / 2 + range[2]), dim=1)
+    return points, voxel[occIdx]
 
 def voxel_profile(voxel, voxel_size):
     centers = torch.cat((voxel[:, :2], voxel[:, 2][:, None] - voxel_size[2] / 2), dim=1)
@@ -109,62 +91,6 @@ def my_compute_box_3d(center, size, heading_angle):
     corners_3d[..., 2] += center[:, 2:3]
     return corners_3d
 
-def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, bbox3d=None, voxelize=False, bbox_corners=None, linesets=None, vis=None, offset=[0,0,0]):
-    """
-    :param points:
-    :param colors: false 不显示点云颜色
-    :param points_colors:
-    :param bbox3d: voxel边界， Nx7 (center, wlh, yaw=0)
-    :param voxelize: false 不显示voxel边界
-    :return:
-    """
-    if vis is None:
-        vis = o3d.visualization.VisualizerWithKeyCallback()
-        vis.create_window()
-    if isinstance(offset, list) or isinstance(offset, tuple):
-        offset = np.array(offset)
-
-    opt = vis.get_render_option()
-    opt.background_color = np.asarray([1, 1, 1])
-    #opt.background_color = np.asarray([0, 0, 0])
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points+offset)
-    if colors:
-        pcd.colors = o3d.utility.Vector3dVector(points_colors[:, :3])
-    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-        size=1.6, origin=[0, 0, 0])
-
-    vis.add_geometry(pcd)
-    if voxelize:
-        line_sets = o3d.geometry.LineSet()
-        line_sets.points = o3d.open3d.utility.Vector3dVector(bbox_corners.reshape((-1, 3))+offset)
-        line_sets.lines = o3d.open3d.utility.Vector2iVector(linesets.reshape((-1, 2)))
-        line_sets.paint_uniform_color((0, 0, 0))
-        # line_sets.colors = o3d.open3d.utility.Vector3dVector(colors)
-        # linesets = _draw_bboxes(bbox3d, vis)
-
-    vis.add_geometry(mesh_frame)
-    vis.add_geometry(line_sets)
-    # vis.run()
-    return vis
-
-def main(occ_state, occ_show, voxel_size, vis=None, offset=[0,0,0]):
-    # occ_state, voxel_size = data['occ_state'].cpu(), data['voxel_size']
-    colors = colormap_to_colors / 255
-    pcd, labels, occIdx = voxel2points(occ_state, occ_show, voxel_size)
-    _labels = labels % len(colors)
-    pcds_colors = colors[_labels]
-    bboxes = voxel_profile(pcd, voxel_size)
-    bboxes_corners = my_compute_box_3d(bboxes[:, 0:3], bboxes[:, 3:6], bboxes[:, 6:7])
-    #bboxes_corners = torch.cat([my_compute_box_3d(box[0:3], box[3:6], box[6:7])[None, ...] for box in bboxes], dim=0)
-    bases_ = torch.arange(0, bboxes_corners.shape[0] * 8, 8)
-    edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]])  # lines along y-axis
-    edges = edges.reshape((1, 12, 2)).repeat(bboxes_corners.shape[0], 1, 1)
-    edges = edges + bases_[:, None, None]
-    vis = show_point_cloud(points=pcd.numpy(), colors=True, points_colors=pcds_colors, voxelize=True, bbox3d=bboxes.numpy(),
-                     bbox_corners=bboxes_corners.numpy(), linesets=edges.numpy(), vis=vis, offset=offset)
-    return vis
-
 def generate_the_ego_car():
     ego_range = [-2, -1, 0, 2, 1, 1.5]
     ego_voxel_size=[0.1, 0.1, 0.1]
@@ -185,104 +111,150 @@ def generate_the_ego_car():
     ego_dict['point'] = ego_point_xyz
     ego_dict['label'] = ego_points_label
     return ego_point_xyz
-    
-if __name__ == '__main__':
 
-    
-    
-    NOT_OBSERVED = -1
-    FREE = 0
-    OCCUPIED = 1
-    FREE_LABEL = 23
-    MAX_POINT_NUM = 10
-    ROAD_LABEL_START_BEFORE_REMAP = 24
-    ROAD_LABEL_STOP_BEFORE_REMAP = 27
-    ROAD_LABEL_START = 13
-    ROAD_LABEL_STOP = 14
-    BINARY_OBSERVED = 1
-    BINARY_NOT_OBSERVED = 0
-    STUFF_START = 9  # 0-10 thing 11-17 stuff
+def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, obj_bboxes=None, voxelize=False, bbox_corners=None, linesets=None, ego_pcd=None, scene_idx=0, frame_idx=0, large_voxel=True, voxel_size=0.4):
+    # vis = o3d.visualization.VisualizerWithKeyCallback()
+    # vis.create_window(str(scene_idx))
+    geo_group = []
+    # opt = vis.get_render_option()
+    # opt.background_color = np.asarray([1, 1, 1])
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    if colors:
+        pcd.colors = o3d.utility.Vector3dVector(points_colors[:, :3])
+    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=1.6, origin=[0, 0, 0])
 
-    VOXEL_SIZE=[0.1, 0.1, 0.2]
-    POINT_CLOUD_RANGE=[-80, -80, -5, 80, 80, 7.8]
-    SPTIAL_SHAPE=[1600, 1600, 64]
-    TGT_VOXEL_SIZE=[0.4, 0.4, 0.4]
-    TGT_POINT_CLOUD_RANGE=[-40, -40, -1, 40, 40, 5.4]
-    VIS = True
-    FILL_ROAD = False
+    pcd.points = o3d.utility.Vector3dVector(points)
+    voxelGrid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
+    if large_voxel:
+         geo_group += [voxelGrid]
+    else:
+        geo_group += [pcd]
+    if voxelize:
+        line_sets = o3d.geometry.LineSet()
+        line_sets.points = o3d.open3d.utility.Vector3dVector(bbox_corners.reshape((-1, 3)))
+        line_sets.lines = o3d.open3d.utility.Vector2iVector(linesets.reshape((-1, 2)))
+        line_sets.paint_uniform_color((0, 0, 0))
 
-    voxel_size = VOXEL_SIZE
-    point_cloud_range = POINT_CLOUD_RANGE
+    geo_group += [mesh_frame, pcd, line_sets]
 
-    data_root = "data/nuscene"
-    maeta_data_path = os.path.join(data_root,'annotations.json')
-    with open(maeta_data_path, 'rb+') as fp:
-        metadata = json.load(fp)
-    
-    train_split = metadata['train_split']
-    scenes_infos = metadata['scene_infos']
+    # vis.add_geometry(mesh_frame)
+    # vis.add_geometry(pcd)
+    # view_control = vis.get_view_control()
+    # view_control.set_lookat(np.array([0, 0, 0]))
+    # vis.add_geometry(line_sets)
+    # vis.poll_events()
+    # vis.update_renderer()
+    return geo_group
 
-    for scene_id in train_split:
-        for frame in scenes_infos[scene_id].values():
-            file_path = frame['gt_path']
-            file = os.path.join(data_root, file_path)
-            continue
 
-    # for idx in range(100):
-    #     file = os.path.join(data_dir, f'{str(idx).zfill(3)}.npz')
+def quaterRot(q):  # x, y ,z ,w
+    rot_matrix = np.array(
+        [[1.0 - 2 * (q[1] * q[1] + q[2] * q[2]), 2 * (q[0] * q[1] - q[3] * q[2]), 2 * (q[3] * q[1] + q[0] * q[2])],
+         [2 * (q[0] * q[1] + q[3] * q[2]), 1.0 - 2 * (q[0] * q[0] + q[2] * q[2]), 2 * (q[1] * q[2] - q[3] * q[0])],
+         [2 * (q[0] * q[2] - q[3] * q[1]), 2 * (q[1] * q[2] + q[3] * q[0]), 1.0 - 2 * (q[0] * q[0] + q[1] * q[1])]])
+    return rot_matrix
+
+def vis_nuscene():
+    BABY_VIS = False
+    voxelSize = [0.4, 0.4, 0.4]
+    point_cloud_range = [-40.0, -40.0, -1.0, 40.0, 40.0, 5.4]
+
+    ignore_labels = [17, 255]
+    vis_voxel_size = 0.4
+
+    # If you want to vis the data file provided in GitHub, use the code below
+    if BABY_VIS :
+        file = "data/nuscene/example.npz" # change this to the file path on your machine
         data = np.load(file)
-        voxel_label = data['semantics']
-        # voxel_label = data['voxel_label']
-        lidar_mask = data['mask_lidar']
-        camera_mask = data['mask_camera']
-        infov = data['infov']
-        ego2global = data['ego2global']
+        semantics, mask_lidar, mask_camera = data['semantics'], data['mask_lidar'], data['mask_camera']
+    else:
+    # If you want to vis the gt files in mini & trainval, use the code below
+        scene_id = 103
+        frame_id = '0a0d6b8c2e884134a3b48df43d54c36a'
+        scene_info_file = 'data/nuscene/annotations.json'
+        file_gt = 'data/nuscene/gts/scene-%04d/%s'%(scene_id, frame_id) # change this to the gt folder path on your machine
+        label_file = os.path.join(file_gt,  'labels.npz')
+        labels = np.load(label_file)
+        with open(scene_info_file, 'rb') as fp:
+            frame_info = json.load(fp)['scene_infos']['scene-%04d'%scene_id][frame_id]
+        semantics, mask_lidar, mask_camera = labels['semantics'], labels['mask_lidar'], labels['mask_camera']
+        # mask_camera_file = os.path.join(file_gt, 'mask_camera.npz')
+        # mask_lidar_file = os.path.join(file_gt, 'mask_lidar.npz')
+        # semantics_file = os.path.join(file_gt, 'semantics.npz')
+        # semantics = (np.load(semantics_file))['arr_0']
+        # mask_lidar = (np.load(mask_lidar_file))['arr_0']
+        # mask_camera = (np.load(mask_camera_file))['arr_0']
 
-        if FILL_ROAD:
-            # fill road for vis
-            road=(voxel_label==ROAD_LABEL_START)
-            # road_level=torch.argmax(torch.bincount(torch.nonzero(road)[:, 2]))
-            road_level = (np.nonzero(road)[2]).min()
-            voxel_label[:,:, road_level] = 16 # gray color
+        cam_name = 'CAM_FRONT'
+        cam = frame_info['camera_sensor'][cam_name]
+        img_path = os.path.join('data/nuscene/imgs', cam['img_path'])
+        K = np.array(cam['intrinsics'])
+        K[0, 2] = round(K[0, 2]) + 0.5
+        K[1, 2] = round(K[1, 2]) + 0.5
+        H_vis, W_vis = int(2 * K[1, 2] - 1), int(2 * K[0, 2] - 1)
 
-        ignore_labels = [FREE_LABEL]
-        mask = np.zeros_like(voxel_label, dtype=np.bool)
-        for ignore_label in ignore_labels:
-            mask = np.logical_or(voxel_label == ignore_label, mask)
-        mask = np.logical_not(mask)
+        frame2global = np.eye(4)
+        frame2global[:3,:3] = Quaternion(frame_info['ego_pose']['rotation'])
+        frame2global[:3,3] = np.array(frame_info['ego_pose']['translation'])
 
-        voxel_state = lidar_mask
-        voxel_label_vis = voxel_label
-        voxel_show = voxel_label != FREE_LABEL
-        vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=None,
-                            offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 0, 0, 0])
+        global2frame = np.eye(4)
+        global2frame[:3,:3] = Quaternion(cam['ego_pose']['rotation']).rotation_matrix
+        global2frame[:3,3] = np.array(cam['ego_pose']['translation'])
+        global2frame = np.linalg.inv(global2frame)
 
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, lidar_mask == BINARY_OBSERVED)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 1, 0, 0])
+        w2c = np.eye(4)
+        w2c[:3,:3] = Quaternion(cam['extrinsic']['rotation']).rotation_matrix
+        w2c[:3,3] = np.array(cam['extrinsic']['translation'])
+        w2c = np.linalg.inv(w2c)
 
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, camera_mask == BINARY_OBSERVED)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 2, 0, 0])
-
-        # voxel_label_vis = voxel_label
-        # voxel_show = np.logical_and(voxel_label != FREE_LABEL, infov == True)
-        # vis = main(torch.from_numpy(voxel_label_vis), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-        #                     offset=[voxel_state.shape[0] * voxel_size[0] * 1.2 * 3, 0, 0])
+        # w2c_cv = CV2GL(w2c)
+        # w2c = w2c
         
-        ego_point = generate_the_ego_car()
-        ego_point[:, 0] += point_cloud_range[3]
-        ego_point[:, 1] += point_cloud_range[4]
-        ego_point[:, 2] += point_cloud_range[5]
-        ego_pcd = o3d.geometry.PointCloud()
-        ego_pcd.points = o3d.utility.Vector3dVector(ego_point)
-        vis.add_geometry(ego_pcd)
+        w2c_ = w2c @ global2frame @ frame2global
+        a = w2c_ -  w2c
+        # @ global2local @ lidar2global 
+    
 
-        vis.run()
-        vis.poll_events()
-        vis.update_renderer()
-        # vis.capture_screen_image(f'output/ray.jpg')
+    voxels = semantics
 
-        del vis
+    #? Step1 Scene Semantic Visualization
+    points, labels = voxel2points(voxels, voxelSize, range=point_cloud_range, ignore_labels=ignore_labels)
+    points = points.numpy()
+    labels = labels.numpy()
+    pcd_colors = color[labels.astype(int) % len(color)]
+    bboxes = voxel_profile(torch.tensor(points), voxelSize)
+
+    #? Step2 Ego Car Visualization
+    ego_pcd = o3d.geometry.PointCloud()
+    ego_points = generate_the_ego_car()
+    ego_pcd.points = o3d.utility.Vector3dVector(ego_points)
+    bboxes_corners = my_compute_box_3d(bboxes[:, 0:3], bboxes[:, 3:6], bboxes[:, 6:7])
+    bases_ = torch.arange(0, bboxes_corners.shape[0] * 8, 8)
+    edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0], 
+                          [4, 5], [5, 6], [6, 7], [7, 4], 
+                          [0, 4], [1, 5], [2, 6], [3, 7]])  # lines along y-axis
+    edges = edges.reshape((1, 12, 2)).repeat(bboxes_corners.shape[0], 1, 1)
+    edges = edges + bases_[:, None, None]
+    geo_group = show_point_cloud(points=points, colors=True, points_colors=pcd_colors, voxelize=True, obj_bboxes=None,
+                        bbox_corners=bboxes_corners.numpy(), linesets=edges.numpy(), ego_pcd=ego_pcd, large_voxel=True, voxel_size=vis_voxel_size)
+
+   
+    #? Step3 control view   
+    vis = costum_visualizer_o3d(geo_group=geo_group, instrinsic=K, extrinsic=w2c, visible=True)
+    vis.run()
+    proj_img = np.asarray(vis.capture_screen_float_buffer())
+    vis.destroy_window()
+    del vis
+    front_img = plt.imread(img_path) / 255.
+    H, W = min(front_img.shape[0], H_vis), min(front_img.shape[1], W_vis)
+    plt.imshow((proj_img[:H,:W,:3] + front_img[:H,:W,:3]))
+    plt.show()
+    print('done')
+
+
+
+
+if __name__ == '__main__':
+    vis_nuscene()

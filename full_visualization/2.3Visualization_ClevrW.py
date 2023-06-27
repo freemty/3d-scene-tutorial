@@ -141,16 +141,7 @@ def CV2GL(cv_mat):
     # gl_mat[:3,3] = cv_mat[:3,3]
     return gl_mat
 
-def GL2CV(gl_mat):
-    gl2cv_mat = np.array(
-        [[1,0,0,0],
-        [0,-1,0,0],
-        [0,0,-1,0],
-        [0,0,0,1]])
-    # ) using CV basis to describe GL basis
-    cv_mat =  gl_mat @ gl2cv_mat
-    # cv_mat[:3,3] = gl_mat[:3,3]
-    return cv_mat
+
 
 def parse_bbox(tr,name, semanticId, instanceId, color, scale = 1.):
     s = scale / 2
@@ -251,7 +242,7 @@ if __name__ == '__main__':
             [0.0,280,128.0],
             [0.0,0.0,1.0]])
     c2w_gl = np.array(metadata['extrinsic'])
-    c2w = GL2CV(c2w_gl)
+    c2w = CV2GL(c2w_gl)
     w2c = np.linalg.inv(c2w)
 
     
