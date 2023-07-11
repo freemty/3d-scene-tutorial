@@ -45,19 +45,20 @@ def create_c2w(cam_R_world, cam_T_world, cam_type = 'opencv'):
     
     c2w = np.eye(4)
     c2w[:3,:3] = cam_R_world
+    c2w[:3,3] = cam_T_world
     # cam_tr_world[:3,:3] = cam_R_world
     # cam_tr_world[:3,3] = cam_T_world
     if cam_type == 'opencv':
-        # rectmat: Transfrom points from camera coodriante to world coordinate (using world basis to describe cmaera basis)
+        # c2lidar: Transfrom points from camera coodriante to world coordinate (using lidar basis to describe camera basis)
         # > https://zhuanlan.zhihu.com/p/404773542
         # > https://www.zhihu.com/question/407150749
-        rectmat = np.array([
+        c2lidar = np.array([
             [0,0,1,0],
             [-1,0,0,0],
             [0,-1,0,0],
             [0,0,0,1]])
     elif cam_type == 'opengl':
-        rectmat = np.array([
+        c2lidar = np.array([
             [0,0,-1,0],
             [-1,0,0,0],
             [0,1,0,0],
@@ -66,8 +67,8 @@ def create_c2w(cam_R_world, cam_T_world, cam_type = 'opencv'):
     else:
         raise TypeError
     
-    c2w = c2w @ rectmat
-    c2w[:3,3] += cam_T_world
+    c2w = c2w @ c2lidar
+    # c2w[:3,3] += cam_T_world
 
     return c2w
 

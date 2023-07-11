@@ -50,9 +50,7 @@ def voxel2points(voxel, voxelSize, range=[-40.0, -40.0, -1.0, 40.0, 40.0, 5.4], 
         mask = torch.logical_or(voxel == ignore_label, mask)
     mask = torch.logical_not(mask)
     occIdx = torch.where(mask)
-    # points = torch.concatenate((np.expand_dims(occIdx[0], axis=1) * voxelSize[0], \
-    #                          np.expand_dims(occIdx[1], axis=1) * voxelSize[1], \
-    #                          np.expand_dims(occIdx[2], axis=1) * voxelSize[2]), axis=1)
+
     points = torch.cat((occIdx[0][:, None] * voxelSize[0] + voxelSize[0] / 2 + range[0], \
                         occIdx[1][:, None] * voxelSize[1] + voxelSize[1] / 2 + range[1], \
                         occIdx[2][:, None] * voxelSize[2] + voxelSize[2] / 2 + range[2]), dim=1)
@@ -67,13 +65,6 @@ def voxel_profile(voxel, voxel_size):
     yaw = torch.full_like(centers[:, 0:1], 0)
     return torch.cat((centers, wlh, yaw), dim=1)
 
-def rotz(t):
-    """Rotation about the z-axis."""
-    c = torch.cos(t)
-    s = torch.sin(t)
-    return torch.tensor([[c, -s,  0],
-                     [s,  c,  0],
-                     [0,  0,  1]])
 
 def my_compute_box_3d(center, size, heading_angle):
     h, w, l = size[:, 2], size[:, 0], size[:, 1]
@@ -112,12 +103,9 @@ def generate_the_ego_car():
     ego_dict['label'] = ego_points_label
     return ego_point_xyz
 
-def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, obj_bboxes=None, voxelize=False, bbox_corners=None, linesets=None, ego_pcd=None, scene_idx=0, frame_idx=0, large_voxel=True, voxel_size=0.4):
-    # vis = o3d.visualization.VisualizerWithKeyCallback()
-    # vis.create_window(str(scene_idx))
+def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, obj_bboxes=None, voxelize=False, bbox_corners=None, linesets=None, large_voxel=True, voxel_size=0.4):
+
     geo_group = []
-    # opt = vis.get_render_option()
-    # opt.background_color = np.asarray([1, 1, 1])
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     if colors:
@@ -139,22 +127,7 @@ def show_point_cloud(points: np.ndarray, colors=True, points_colors=None, obj_bb
 
     geo_group += [mesh_frame, pcd, line_sets]
 
-    # vis.add_geometry(mesh_frame)
-    # vis.add_geometry(pcd)
-    # view_control = vis.get_view_control()
-    # view_control.set_lookat(np.array([0, 0, 0]))
-    # vis.add_geometry(line_sets)
-    # vis.poll_events()
-    # vis.update_renderer()
     return geo_group
-
-
-def quaterRot(q):  # x, y ,z ,w
-    rot_matrix = np.array(
-        [[1.0 - 2 * (q[1] * q[1] + q[2] * q[2]), 2 * (q[0] * q[1] - q[3] * q[2]), 2 * (q[3] * q[1] + q[0] * q[2])],
-         [2 * (q[0] * q[1] + q[3] * q[2]), 1.0 - 2 * (q[0] * q[0] + q[2] * q[2]), 2 * (q[1] * q[2] - q[3] * q[0])],
-         [2 * (q[0] * q[2] - q[3] * q[1]), 2 * (q[1] * q[2] + q[3] * q[0]), 1.0 - 2 * (q[0] * q[0] + q[1] * q[1])]])
-    return rot_matrix
 
 def vis_nuscene():
     BABY_VIS = False
@@ -180,42 +153,7 @@ def vis_nuscene():
         with open(scene_info_file, 'rb') as fp:
             frame_info = json.load(fp)['scene_infos']['scene-%04d'%scene_id][frame_id]
         semantics, mask_lidar, mask_camera = labels['semantics'], labels['mask_lidar'], labels['mask_camera']
-        # mask_camera_file = os.path.join(file_gt, 'mask_camera.npz')
-        # mask_lidar_file = os.path.join(file_gt, 'mask_lidar.npz')
-        # semantics_file = os.path.join(file_gt, 'semantics.npz')
-        # semantics = (np.load(semantics_file))['arr_0']
-        # mask_lidar = (np.load(mask_lidar_file))['arr_0']
-        # mask_camera = (np.load(mask_camera_file))['arr_0']
 
-        cam_name = 'CAM_FRONT'
-        cam = frame_info['camera_sensor'][cam_name]
-        img_path = os.path.join('data/nuscene/imgs', cam['img_path'])
-        K = np.array(cam['intrinsics'])
-        K[0, 2] = round(K[0, 2]) + 0.5
-        K[1, 2] = round(K[1, 2]) + 0.5
-        H_vis, W_vis = int(2 * K[1, 2] - 1), int(2 * K[0, 2] - 1)
-
-        frame2global = np.eye(4)
-        frame2global[:3,:3] = Quaternion(frame_info['ego_pose']['rotation'])
-        frame2global[:3,3] = np.array(frame_info['ego_pose']['translation'])
-
-        global2frame = np.eye(4)
-        global2frame[:3,:3] = Quaternion(cam['ego_pose']['rotation']).rotation_matrix
-        global2frame[:3,3] = np.array(cam['ego_pose']['translation'])
-        global2frame = np.linalg.inv(global2frame)
-
-        w2c = np.eye(4)
-        w2c[:3,:3] = Quaternion(cam['extrinsic']['rotation']).rotation_matrix
-        w2c[:3,3] = np.array(cam['extrinsic']['translation'])
-        w2c = np.linalg.inv(w2c)
-
-        # w2c_cv = CV2GL(w2c)
-        # w2c = w2c
-        
-        w2c_ = w2c @ global2frame @ frame2global
-        a = w2c_ -  w2c
-        # @ global2local @ lidar2global 
-    
 
     voxels = semantics
 
@@ -225,11 +163,6 @@ def vis_nuscene():
     labels = labels.numpy()
     pcd_colors = color[labels.astype(int) % len(color)]
     bboxes = voxel_profile(torch.tensor(points), voxelSize)
-
-    #? Step2 Ego Car Visualization
-    ego_pcd = o3d.geometry.PointCloud()
-    ego_points = generate_the_ego_car()
-    ego_pcd.points = o3d.utility.Vector3dVector(ego_points)
     bboxes_corners = my_compute_box_3d(bboxes[:, 0:3], bboxes[:, 3:6], bboxes[:, 6:7])
     bases_ = torch.arange(0, bboxes_corners.shape[0] * 8, 8)
     edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0], 
@@ -237,21 +170,49 @@ def vis_nuscene():
                           [0, 4], [1, 5], [2, 6], [3, 7]])  # lines along y-axis
     edges = edges.reshape((1, 12, 2)).repeat(bboxes_corners.shape[0], 1, 1)
     edges = edges + bases_[:, None, None]
+
+    #? Step2 Ego Car Visualization
+    ego_pcd = o3d.geometry.PointCloud()
+    ego_points = generate_the_ego_car()
+    ego_pcd.points = o3d.utility.Vector3dVector(ego_points)
+
+
     geo_group = show_point_cloud(points=points, colors=True, points_colors=pcd_colors, voxelize=True, obj_bboxes=None,
-                        bbox_corners=bboxes_corners.numpy(), linesets=edges.numpy(), ego_pcd=ego_pcd, large_voxel=True, voxel_size=vis_voxel_size)
+                        bbox_corners=bboxes_corners.numpy(), linesets=edges.numpy(), large_voxel=True, voxel_size=vis_voxel_size)
 
    
     #? Step3 control view   
-    vis = costum_visualizer_o3d(geo_group=geo_group, instrinsic=K, extrinsic=w2c, visible=True)
-    vis.run()
-    proj_img = np.asarray(vis.capture_screen_float_buffer())
-    vis.destroy_window()
-    del vis
-    front_img = plt.imread(img_path) / 255.
-    H, W = min(front_img.shape[0], H_vis), min(front_img.shape[1], W_vis)
-    plt.imshow((proj_img[:H,:W,:3] + front_img[:H,:W,:3]))
+    for i, cam_name in enumerate(['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                     'CAM_BACK_RIGHT', 'CAM_BACK', 'CAM_BACK_LEFT']):
+        cam = frame_info['camera_sensor'][cam_name]
+        img_path = os.path.join('data/nuscene/imgs', cam['img_path'])
+        K = np.array(cam['intrinsics'])
+        K[0, 2] = round(K[0, 2]) + 0.5
+        K[1, 2] = round(K[1, 2]) + 0.5
+        H_vis, W_vis = int(2 * K[1, 2] - 1), int(2 * K[0, 2] - 1)
+        w2c = np.eye(4)
+        w2c[:3,:3] = Quaternion(cam['extrinsic']['rotation']).rotation_matrix
+        w2c[:3,3] = np.array(cam['extrinsic']['translation'])
+        w2c = np.linalg.inv(w2c)
+        
+        vis = costum_visualizer_o3d(geo_group=geo_group, instrinsic=K, extrinsic=w2c, visible=False)
+        # vis.run()
+        proj_img = np.asarray(vis.capture_screen_float_buffer())
+        # vis.destroy_window()
+        del vis
+        front_img = plt.imread(img_path) / 255.
+        H, W = min(front_img.shape[0], H_vis), min(front_img.shape[1], W_vis)
+        plt.subplot(2, 3, i + 1)
+        plt.imshow((proj_img[:H,:W,:3] + front_img[:H,:W,:3]))
+        plt.title(cam_name)
+        plt.axis('off')
+
+        print('%s done'% cam_name)
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace =0, hspace =0)
     plt.show()
-    print('done')
+        
 
 
 

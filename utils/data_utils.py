@@ -21,7 +21,7 @@ def convert_legacy_kitti360_layout(layout_path):
 
         tr = np.eye(4)
         tr[:3,:3], tr[:3,3] = obj.R, obj.T
-        tr = tr @ opencv2world.T
+        tr = tr @ opencv2world
 
         vertices = np.concatenate((obj.vertices, np.ones_like(obj.vertices[:,0:1])), axis=-1)
         vertices = vertices @ opencv2world.T
@@ -62,7 +62,16 @@ def convert_legacy_kitti360_stuff(semantic_voxel_path, scene_size, voxel_size,vo
     semantic_voxel = np.ascontiguousarray(semantic_voxel)
 
     import torch.nn.functional as F
-    semantic_voxel = F.interpolate(torch.tensor(semantic_voxel, dtype=torch.uint8)[None,None,:,:,:], (W_o, D_o, H_o), mode = 'nearest')[0,0].numpy()
+
+    if H_o > H:
+        semantic_voxel = F.interpolate(torch.tensor(semantic_voxel, dtype=torch.uint8)[None,None,:,:,:], (W_o, D_o, H_o), mode = 'nearest')[0,0].numpy()
+    else:
+        import torch.nn as nn
+        occupancy_mask = torch.from_numpy(semantic_voxel != 0)[None].to(torch.float32)
+        ks = (W // W_o, D // D_o,  H // H_o)
+        down =  nn.MaxPool3d(kernel_size=ks, stride=ks, return_indices=True)
+        _ , _idx = down(occupancy_mask)
+        semantic_voxel = semantic_voxel.reshape(-1)[_idx][0]
 
     vertices_gridx,  vertices_gridy, vertices_gridz= np.meshgrid(np.linspace(0, scene_size[0], point_num[0]), np.linspace(0, scene_size[1], point_num[1]), np.linspace(0, scene_size[2], point_num[2]), indexing='xy') 
     loc_voxel = np.concatenate((vertices_gridx[:,:,:,None], vertices_gridy[:,:,:,None], vertices_gridz[:,:,:,None]), axis = -1)
@@ -75,8 +84,8 @@ def convert_legacy_kitti360_stuff(semantic_voxel_path, scene_size, voxel_size,vo
             'voxel_size' : voxel_size,
             'voxel_origin' : voxel_origin,
             'index_order' : 'YXZ',
-            'semantic_color' : {n : np.array(name2label[n].color) / 255. for n in semantic_list},
-            'semantic_name' : semantic_list,
+            'semantic_labels' : {n : name2label[n]for n in semantic_list},
+            'semantic_id' : {name2label[n].id : n for n in semantic_list},
         }
     return stuff
 
@@ -85,8 +94,43 @@ def convert_legacy_kitti360_stuff(semantic_voxel_path, scene_size, voxel_size,vo
 def convert_semanticKITTI_layout(semantic_voxel_path):
     pass
 
-def convert_semanticKITTI_stuff(semantic_voxel_path):
-    pass
+def convert_ssc_kitti_stuff(semantic_voxel_path, scene_size, voxel_size,voxel_origin ,semantic_list, KITTI_learning_map):
+    '''
+    Load old version seamntic voxel
+    '''
+ 
+    with open(semantic_voxel_path, 'rb') as fp:
+        # a = pkl.load(fp)
+        stuff_semantic= pkl.load(fp)['y_pred']
+    stuff_semantic = stuff_semantic.transpose(1,0,2)
+
+    point_num = (scene_size / voxel_size).astype(int) # X, Y, Z
+    H, W, D = 32, 256, 256
+    H_o, W_o, D_o = point_num[2], point_num[1], point_num[0]
+    t = np.zeros_like( stuff_semantic).astype(np.uint8)
+
+    for i in semantic_list:
+        t[stuff_semantic == KITTI_learning_map[i]] = name2label[i].id
+
+    import torch.nn.functional as F
+    import torch
+    semantic_voxel = F.interpolate(torch.tensor(t, dtype=torch.uint8)[None,None,:,:,:], (W_o, D_o, H_o), mode = 'nearest')[0,0].numpy()
+
+    vertices_gridx,  vertices_gridy, vertices_gridz= np.meshgrid(np.linspace(0, scene_size[0], point_num[0]), np.linspace(0, scene_size[1], point_num[1]), np.linspace(0, scene_size[2], point_num[2]), indexing='xy') 
+    loc_voxel = np.concatenate((vertices_gridx[:,:,:,None], vertices_gridy[:,:,:,None], vertices_gridz[:,:,:,None]), axis = -1)
+    loc_voxel += voxel_origin[None,None,None]
+
+    stuff =  {
+            'semantic_grid' : semantic_voxel, 
+            'loc_grid' : loc_voxel,
+            'scene_size' : scene_size,
+            'voxel_size' : voxel_size,
+            'voxel_origin' : voxel_origin,
+            'index_order' : 'YXZ',
+            'semantic_labels': {n : name2label[n] for n in semantic_list},
+            'semantic_id' : {name2label[n].id : n for n in semantic_list},
+        }
+    return stuff
 #-----------------------------------------ClevrW helper---------------------------------------
 
 def convert_legacy_ClevrW_stuff(semantic_voxel_path):

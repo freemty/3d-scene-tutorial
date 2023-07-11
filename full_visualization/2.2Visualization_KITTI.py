@@ -76,23 +76,6 @@ KITTI_Stuff = {KITTI_learning_map_inv[k] for k in KITTI_learning_map_inv if (KIT
 # name2semantic_kitti = {id2name_semantic_kitti : k for k in id2name_semantic_kitti }
 
 
-# stuff_semantic_list_render =  [
-#     'vegetation',
-#     'terrain',
-#     'ground',
-#     'road', 
-#     'sidewalk',
-#     'parking',
-#     'building',
-#     # 'gate','garage', 'bridge','tunnel','wall',
-#     # # 'truck','train','caravan','bus','trailer',
-#      'fence',
-#     # 'trash bin','box','lamp','smallpole','polegroup','stop','pole','traffic sign','traffic light',
-#     # 'car',
-#     # 'person'
-#     ]
-
-
 scene_size = np.array((51.2, 51.2, 6.4))
 vox_size = np.array((0.2, 0.2,0.2))
 vox_origin = np.array([0, -25.6, -2])
@@ -190,32 +173,32 @@ if __name__ == '__main__':
 
     panoptic_prior_dir = semantic_voxel_path = os.path.join(data_root, 'panoptic_prior', '2013_05_28_drive_0000_sync')
 
-    if save_panoptic_prior:
-        os.makedirs(panoptic_prior_dir, exist_ok=True)
-        panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
-        del stuff_world['loc_grid']
-        panoptic_prior = {
-                'c2w_openGL' : c2w_gl,
-                'c2w_openCV' : c2w,
-                'K' : K,
-                'HW': (H, W), 
-                'stuff_world': stuff_world,
-                'object_layout': object_layout,
-                }
+    # if save_panoptic_prior:
+        # os.makedirs(panoptic_prior_dir, exist_ok=True)
+        # panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
+        # del stuff_world['loc_grid']
+        # panoptic_prior = {
+        #         'c2w_openGL' : c2w_gl,
+        #         'c2w_openCV' : c2w,
+        #         'K' : K,
+        #         'HW': (H, W), 
+        #         'stuff_world': stuff_world,
+        #         'object_layout': object_layout,
+        #         }
 
-        with open(panoptic_prior_path, 'wb+') as fp:
-            pkl.dump(panoptic_prior, fp)
-        os.makedirs(panoptic_prior_dir, exist_ok=True)
-        panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
-        del stuff_world['loc_grid']
-        panoptic_prior = {
-                'c2w_openGL' : c2w_gl,
-                'c2w_openCV' : c2w,
-                'K' : K,
-                'HW': (H, W), 
-                'stuff_world': stuff_world,
-                'object_layout': object_layout,
-                }
+        # with open(panoptic_prior_path, 'wb+') as fp:
+        #     pkl.dump(panoptic_prior, fp)
+        # os.makedirs(panoptic_prior_dir, exist_ok=True)
+        # panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
+        # del stuff_world['loc_grid']
+        # panoptic_prior = {
+        #         'c2w_openGL' : c2w_gl,
+        #         'c2w_openCV' : c2w,
+        #         'K' : K,
+        #         'HW': (H, W), 
+        #         'stuff_world': stuff_world,
+        #         'object_layout': object_layout,
+        #         }
 
-        with open(panoptic_prior_path, 'wb+') as fp:
-            pkl.dump(panoptic_prior, fp)
+        # with open(panoptic_prior_path, 'wb+') as fp:
+        #     pkl.dump(panoptic_prior, fp)

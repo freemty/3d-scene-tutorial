@@ -1,10 +1,26 @@
-
-
+import torch
 import numpy as np
 import open3d as o3d
 from tools.kitti360Scripts.helpers.labels import  name2label
 
 # o3d utils
+
+def voxel2points(voxel, voxelSize, range=[-40.0, -40.0, -1.0, 40.0, 40.0, 5.4], ignore_labels=[17, 255]):
+    if isinstance(voxel, np.ndarray): voxel = torch.from_numpy(voxel)
+    mask = torch.zeros_like(voxel, dtype=torch.bool)
+    for ignore_label in ignore_labels:
+        mask = torch.logical_or(voxel == ignore_label, mask)
+    mask = torch.logical_not(mask)
+    occIdx = torch.where(mask)
+
+    points = torch.cat((occIdx[1][:, None] * voxelSize[0] + voxelSize[1] / 2 + range[0], \
+                        occIdx[0][:, None] * voxelSize[1] + voxelSize[1] / 2 + range[1], \
+                        occIdx[2][:, None] * voxelSize[2] + voxelSize[2] / 2 + range[2]), dim=1)
+    return points, voxel[occIdx]
+
+
+
+
 def vis_world_bounds_o3d(bounds, add_origin = False, vis = False):
     x_max, x_min, y_max, y_min, z_max, z_min = bounds.ravel()
     # print("Let\'s draw a cubic using o3d.geometry.LineSet")
@@ -42,23 +58,40 @@ def vis_voxel_world_o3d(voxel_world, vis = False, voxelization = False):
     voxel_size = voxel_world['voxel_size'].min()
 
 
-    for k in semantic_list:
-        valid_idx = (vertices_seamntic ==  semantic_id[k])
-        pt= o3d.geometry.PointCloud()
-        if valid_idx.shape[0] != 0:
-            pt.points = o3d.utility.Vector3dVector(vertices_grid_pts[valid_idx == 1])
-            pt_color= semantic_color[k]
-            pt.paint_uniform_color(pt_color)
-            if voxelization:
-                pt = o3d.geometry.VoxelGrid.create_from_point_cloud(pt,
-                                                            voxel_size=voxel_size)
-            pt_group.append(pt)
+    voxel2points(voxel=0)
+
+    points, labels = voxel2points(voxels, voxel_size, range=point_cloud_range, ignore_labels=[0])
+    points = points.numpy()
+    labels = labels.numpy()
+    pcd_colors = color[labels.astype(int) % len(color)]
+    bboxes = voxel_profile(torch.tensor(points), voxelSize)
+    bboxes_corners = my_compute_box_3d(bboxes[:, 0:3], bboxes[:, 3:6], bboxes[:, 6:7])
+    bases_ = torch.arange(0, bboxes_corners.shape[0] * 8, 8)
+    edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0], 
+                          [4, 5], [5, 6], [6, 7], [7, 4], 
+                          [0, 4], [1, 5], [2, 6], [3, 7]])  # lines along y-axis
+    edges = edges.reshape((1, 12, 2)).repeat(bboxes_corners.shape[0], 1, 1)
+    edges = edges + bases_[:, None, None]
+
+    # for k in semantic_list:
+    #     valid_idx = (vertices_seamntic ==  semantic_id[k])
+    #     pt= o3d.geometry.PointCloud()
+    #     if valid_idx.shape[0] != 0:
+    #         pt.points = o3d.utility.Vector3dVector(vertices_grid_pts[valid_idx == 1])
+    #         pt_color= semantic_color[k]
+    #         pt.paint_uniform_color(pt_color)
+    if voxelization:
+        pass
+
+    #             pt = o3d.geometry.VoxelGrid.create_from_point_cloud(pt,
+    #                                                         voxel_size=voxel_size)
+    #         pt_group.append(pt)
 
 
-    if vis:
-        pt_group += [o3d.geometry.TriangleMesh.create_coordinate_frame(size=5)]
-        o3d.visualization.draw_geometries(pt_group)
-    return pt_group
+    # if vis:
+    #     pt_group += [o3d.geometry.TriangleMesh.create_coordinate_frame(size=5)]
+    #     o3d.visualization.draw_geometries(pt_group)
+    return 0
 
 # loc_voxel
 def vis_layout_o3d(layout, vis = False):

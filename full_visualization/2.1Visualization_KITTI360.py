@@ -49,7 +49,8 @@ KITTI360_Stuff = {
 }
 
 scene_size = np.array((64., 64, 16))
-vox_size = np.array((0.25, 0.25,0.25))
+# vox_size = np.array((0.25, 0.25,0.25))
+vox_size = np.array((4, 4,4))
 vox_origin = np.array([0, -32, -2])
 world_bounds = np.array([64, 0, 32, -32, 14, -2])
 H, W = 376, 1408
@@ -86,10 +87,11 @@ if __name__ == '__main__':
     coordinate_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1).transform(c2w)
     geo_group += [coordinate_world, coordinate_cam]
     geo_group += vis_voxel_world_o3d(stuff_world,voxelization=True)
-    geo_group += vis_layout_o3d(object_layout)
+    
+    # geo_group += vis_layout_o3d(object_layout)
     geo_group += vis_camera_o3d(instrinsic=K, extrinsic=w2c, z_revrse=True)
     # o3d.visualization.draw_plotly(geo_group)
-    vis = costum_visualizer_o3d(geo_group=geo_group, set_camera=True, instrinsic=K, extrinsic=w2c, visible = vis_3d)
+    vis = costum_visualizer_o3d(geo_group=geo_group, set_camera=True, instrinsic=K, extrinsic=w2c, visible = vis_3d, background_color= np.array((1,1,1)))
     # # vis.capture_screen_image(os.path.join('tmp', '%06d'%idx + '.png'))
     project_img = np.asarray(vis.capture_screen_float_buffer())
 
@@ -104,7 +106,6 @@ if __name__ == '__main__':
 
 
     panoptic_prior_dir = semantic_voxel_path = os.path.join(data_root, 'panoptic_prior', '2013_05_28_drive_0000_sync')
-
 
     if save_panoptic_prior:
         os.makedirs(panoptic_prior_dir, exist_ok=True)
