@@ -127,9 +127,9 @@ def convert_ssc_kitti_stuff(semantic_voxel_path, scene_size, voxel_size,voxel_or
             'voxel_size' : voxel_size,
             'voxel_origin' : voxel_origin,
             'index_order' : 'YXZ',
-            'semantic_color' : {n : np.array(name2label[n].color) / 255. for n in semantic_list},
-            'semantic_id' : {n : name2label[n].id for n in semantic_list},
-            'semantic_name' : semantic_list,
+            'semantic_labels' : {n : name2label[n] for n in semantic_list},
+            'semantic_id' : {name2label[n].id : n for n in semantic_list},
+            # 'semantic_name' : semantic_list,
         }
     return stuff
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
     coordinate_world = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1)
     coordinate_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1).transform(c2w)
     geo_group += [coordinate_world, coordinate_cam]
-    geo_group += vis_voxel_world_o3d(stuff_world,voxelization=True)
+    geo_group += vis_voxel_world_o3d(stuff_world,voxelize=True, large_voxel=True)
     # geo_group += vis_layout_o3d(object_layout)
     geo_group += vis_camera_o3d(instrinsic=K, extrinsic=w2c, z_revrse=True)
     # o3d.visualization.draw_plotly(geo_group)
@@ -172,33 +172,3 @@ if __name__ == '__main__':
     plt.show()
 
     panoptic_prior_dir = semantic_voxel_path = os.path.join(data_root, 'panoptic_prior', '2013_05_28_drive_0000_sync')
-
-    # if save_panoptic_prior:
-        # os.makedirs(panoptic_prior_dir, exist_ok=True)
-        # panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
-        # del stuff_world['loc_grid']
-        # panoptic_prior = {
-        #         'c2w_openGL' : c2w_gl,
-        #         'c2w_openCV' : c2w,
-        #         'K' : K,
-        #         'HW': (H, W), 
-        #         'stuff_world': stuff_world,
-        #         'object_layout': object_layout,
-        #         }
-
-        # with open(panoptic_prior_path, 'wb+') as fp:
-        #     pkl.dump(panoptic_prior, fp)
-        # os.makedirs(panoptic_prior_dir, exist_ok=True)
-        # panoptic_prior_path = os.path.join(panoptic_prior_dir, '%010d.pkl'%frame_id)
-        # del stuff_world['loc_grid']
-        # panoptic_prior = {
-        #         'c2w_openGL' : c2w_gl,
-        #         'c2w_openCV' : c2w,
-        #         'K' : K,
-        #         'HW': (H, W), 
-        #         'stuff_world': stuff_world,
-        #         'object_layout': object_layout,
-        #         }
-
-        # with open(panoptic_prior_path, 'wb+') as fp:
-        #     pkl.dump(panoptic_prior, fp)

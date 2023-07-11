@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import open3d as o3d
 from tools.kitti360Scripts.helpers.labels import  name2label
-
+import math
 # o3d utils
 
 def voxel2points(voxel, voxelSize, range=[-40.0, -40.0, -1.0, 40.0, 40.0, 5.4], ignore_labels=[17, 255]):
@@ -18,8 +18,30 @@ def voxel2points(voxel, voxelSize, range=[-40.0, -40.0, -1.0, 40.0, 40.0, 5.4], 
                         occIdx[2][:, None] * voxelSize[2] + voxelSize[2] / 2 + range[2]), dim=1)
     return points, voxel[occIdx]
 
+def voxel_profile(voxel, voxel_size):
+    centers = torch.cat((voxel[:, :2], voxel[:, 2][:, None] - voxel_size[2] / 2), dim=1)
+    # centers = voxel
+    wlh = torch.cat((torch.tensor(voxel_size[0]).repeat(centers.shape[0])[:, None],
+                          torch.tensor(voxel_size[1]).repeat(centers.shape[0])[:, None],
+                          torch.tensor(voxel_size[2]).repeat(centers.shape[0])[:, None]), dim=1)
+    yaw = torch.full_like(centers[:, 0:1], 0)
+    return torch.cat((centers, wlh, yaw), dim=1)
 
-
+def my_compute_box_3d(center, size, heading_angle):
+    h, w, l = size[:, 2], size[:, 0], size[:, 1]
+    heading_angle = -heading_angle - math.pi / 2
+    center[:, 2] = center[:, 2] + h / 2
+    #R = rotz(1 * heading_angle)
+    l, w, h = (l / 2).unsqueeze(1), (w / 2).unsqueeze(1), (h / 2).unsqueeze(1)
+    x_corners = torch.cat([-l, l, l, -l, -l, l, l, -l], dim=1)[..., None]
+    y_corners = torch.cat([w, w, -w, -w, w, w, -w, -w], dim=1)[..., None]
+    z_corners = torch.cat([h, h, h, h, -h, -h, -h, -h], dim=1)[..., None]
+    #corners_3d = R @ torch.vstack([x_corners, y_corners, z_corners])
+    corners_3d = torch.cat([x_corners, y_corners, z_corners], dim=2)
+    corners_3d[..., 0] += center[:, 0:1]
+    corners_3d[..., 1] += center[:, 1:2]
+    corners_3d[..., 2] += center[:, 2:3]
+    return corners_3d
 
 def vis_world_bounds_o3d(bounds, add_origin = False, vis = False):
     x_max, x_min, y_max, y_min, z_max, z_min = bounds.ravel()
@@ -48,23 +70,27 @@ def vis_world_bounds_o3d(bounds, add_origin = False, vis = False):
         o3d.visualization.draw_geometries(mark_group)
     return mark_group
 
-def vis_voxel_world_o3d(voxel_world, vis = False, voxelization = False):
-    pt_group = []
+def vis_voxel_world_o3d(voxel_world, vis = False, voxelize = True,large_voxel = True ):
+    geo_group = []
 
-    vertices_seamntic,vertices_grid_pts = voxel_world['semantic_grid'].reshape(-1), voxel_world['loc_grid'].reshape(-1,3)
-    semantic_list = voxel_world['semantic_name']
-    semantic_color = voxel_world['semantic_color']
+    voxels = voxel_world['semantic_grid']
+    # semantic_list = voxel_world['semantic_name']
+    semantic_labels = voxel_world['semantic_labels']
     semantic_id =  voxel_world['semantic_id']
-    voxel_size = voxel_world['voxel_size'].min()
+    voxel_size = voxel_world['voxel_size']
+    scene_range =  np.concatenate( (voxel_world['voxel_origin'], voxel_world['voxel_origin'] + voxel_world['scene_size']))
+    # voxel2points(voxel=0)
 
+    color = np.zeros((max(semantic_id) + 1, 3))
+    for i, n in semantic_id.items():
+        color[i] = np.array(semantic_labels[n].color, dtype=np.float32) / 255.
+    
 
-    voxel2points(voxel=0)
-
-    points, labels = voxel2points(voxels, voxel_size, range=point_cloud_range, ignore_labels=[0])
+    points, labels = voxel2points(voxels, voxel_size, range=scene_range, ignore_labels=[0])
     points = points.numpy()
     labels = labels.numpy()
     pcd_colors = color[labels.astype(int) % len(color)]
-    bboxes = voxel_profile(torch.tensor(points), voxelSize)
+    bboxes = voxel_profile(torch.tensor(points), voxel_size )
     bboxes_corners = my_compute_box_3d(bboxes[:, 0:3], bboxes[:, 3:6], bboxes[:, 6:7])
     bases_ = torch.arange(0, bboxes_corners.shape[0] * 8, 8)
     edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0], 
@@ -73,25 +99,26 @@ def vis_voxel_world_o3d(voxel_world, vis = False, voxelization = False):
     edges = edges.reshape((1, 12, 2)).repeat(bboxes_corners.shape[0], 1, 1)
     edges = edges + bases_[:, None, None]
 
-    # for k in semantic_list:
-    #     valid_idx = (vertices_seamntic ==  semantic_id[k])
-    #     pt= o3d.geometry.PointCloud()
-    #     if valid_idx.shape[0] != 0:
-    #         pt.points = o3d.utility.Vector3dVector(vertices_grid_pts[valid_idx == 1])
-    #         pt_color= semantic_color[k]
-    #         pt.paint_uniform_color(pt_color)
-    if voxelization:
-        pass
-
-    #             pt = o3d.geometry.VoxelGrid.create_from_point_cloud(pt,
-    #                                                         voxel_size=voxel_size)
-    #         pt_group.append(pt)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(pcd_colors[:, :3])
+    # mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+    #     size=1.6, origin=[0, 0, 0])
 
 
-    # if vis:
-    #     pt_group += [o3d.geometry.TriangleMesh.create_coordinate_frame(size=5)]
-    #     o3d.visualization.draw_geometries(pt_group)
-    return 0
+    pcd.points = o3d.utility.Vector3dVector(points)
+    if large_voxel:
+        pcd = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size.min())
+    
+    geo_group += [pcd]
+
+    if voxelize:
+        line_sets = o3d.geometry.LineSet()
+        line_sets.points = o3d.open3d.utility.Vector3dVector(bboxes_corners.reshape((-1, 3)))
+        line_sets.lines = o3d.open3d.utility.Vector2iVector(edges.reshape((-1, 2)))
+        line_sets.paint_uniform_color((0, 0, 0))
+        geo_group += [line_sets]
+    return geo_group
 
 # loc_voxel
 def vis_layout_o3d(layout, vis = False):
@@ -109,7 +136,7 @@ def vis_layout_o3d(layout, vis = False):
         o3d.visualization.draw_geometries(mesh_group)
     return mesh_group
 
-def costum_visualizer_o3d(geo_group, set_camera = True, instrinsic =None, extrinsic = None, visible= False):
+def costum_visualizer_o3d(geo_group, set_camera = True, instrinsic =None, extrinsic = None, visible= False, background_color = np.array([0,0,0])):
     vis = o3d.visualization.Visualizer()
     W = 2 * round(instrinsic[0,2] + 0.5)
     H = 2 * round(instrinsic[1,2] + 0.5)
@@ -129,7 +156,7 @@ def costum_visualizer_o3d(geo_group, set_camera = True, instrinsic =None, extrin
 
     rd = vis.get_render_option()
     rd.light_on = False
-    rd.background_color = np.array([0,0,0])
+    rd.background_color = background_color
 
     # vis.update_geometry()
     vis.poll_events()

@@ -63,7 +63,7 @@ def convert_legacy_kitti360_stuff(semantic_voxel_path, scene_size, voxel_size,vo
 
     import torch.nn.functional as F
 
-    if H_o > H:
+    if H_o >= H:
         semantic_voxel = F.interpolate(torch.tensor(semantic_voxel, dtype=torch.uint8)[None,None,:,:,:], (W_o, D_o, H_o), mode = 'nearest')[0,0].numpy()
     else:
         import torch.nn as nn

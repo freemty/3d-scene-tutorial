@@ -8,11 +8,9 @@ from matplotlib import pyplot as plt
 import json
 sys.path.append(os.getcwd())
 from collections import OrderedDict
-from tools.kitti360Scripts.helpers.labels import name2label
 from utils.o3d_utils import vis_world_bounds_o3d, vis_layout_o3d, vis_voxel_world_o3d, vis_camera_o3d, costum_visualizer_o3d
-from utils.data_utils import convert_legacy_kitti360_layout, convert_legacy_kitti360_stuff
 from utils.transform_utils import  create_c2w, create_R
-
+from collections import namedtuple
 # KITTI360_Stuff = {
 #     # Major
 #     'vegetation',
@@ -47,6 +45,22 @@ from utils.transform_utils import  create_c2w, create_R
 #     'traffic sign',
 #     'traffic light'
 # }
+
+Label = namedtuple( 'Label' , [
+
+    'name'        , # The identifier of this label, e.g. 'car', 'person', ... .
+                    # We use them to uniquely name a class
+    'id'          , 
+    'color'       , # The color of this label
+    ] )
+
+
+name2label = {
+    'ground' : Label(  'ground'            ,  6 ,      (128, 64,128) ),
+    'wall' : Label(  'wall'          ,  11 ,       (102,102,156)) ,
+    'object' : Label(  'object' ,  2 ,    (  70,  70,70) )
+}
+    #       name                     id     color
 
 
 name2id = {'ground' : 6,
@@ -104,9 +118,8 @@ def clevr_legacy_stuff_converter(legacy_stuff_path, semantic_list, scene_size, v
             'voxel_size' : voxel_size,
             'voxel_origin' : voxel_origin,
             'index_order' : 'YXZ',
-            'semantic_color' : {n : np.array(name2color[n]) / 255. for n in semantic_list},
-            'semantic_id' : {n : name2id[n] for n in semantic_list},
-            'semantic_name' : semantic_list,
+            'semantic_labels' : {n : name2label[n] for n in semantic_list},
+            'semantic_id' : {name2label[n].id : n for n in semantic_list}
         }
     return stuff
 
@@ -217,7 +230,7 @@ if __name__ == '__main__':
     scene_size = np.array((16., 16, 4))
     vox_size = np.array((0.1, 0.1,0.1))
     vox_origin = np.array([-8, -8, 0])
-    vis_3d = False
+    vis_3d = True
     data_root = 'data/clevrw'
     frame_id = 2002
 
@@ -250,7 +263,7 @@ if __name__ == '__main__':
     coordinate_world = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1)
     coordinate_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1).transform(c2w)
     geo_group += [coordinate_world, coordinate_cam]
-    geo_group += vis_voxel_world_o3d(voxel_world = stuff_world, voxelization=True)
+    geo_group += vis_voxel_world_o3d(voxel_world = stuff_world, voxelize=True)
     geo_group += vis_layout_o3d(object_layout)
     geo_group += vis_world_bounds_o3d(bounds=bounds)
 
